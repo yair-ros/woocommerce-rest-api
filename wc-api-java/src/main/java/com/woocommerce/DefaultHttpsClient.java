@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.woocommerce.auth.AuthParamsKey;
 import com.woocommerce.auth.BasicAuthConfig;
+
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -73,18 +75,40 @@ public class DefaultHttpsClient implements HttpsClient {
 		return doHttpRequest(endPointBaseType, httpRequest, false);
 	}
 
-	private <T> T doHttpRequest(EndPointBaseType endPointBaseType, HttpRequestBase httpRequest, boolean isList) {
-		httpRequest.setHeader("Content-Type", "application/json");
-		try (CloseableHttpClient client = HttpClientBuilder.create().build();
-				CloseableHttpResponse response = client.execute(httpRequest);
-				InputStream inputStream = response.getEntity().getContent()) {
-			return parseResponse(endPointBaseType, isList, inputStream);
-		} catch (IOException e) {
-			throw new RuntimeException(e);
-		} 
-	}
-	
-	@SuppressWarnings("unchecked")
+    private <T> T doHttpRequest(EndPointBaseType endPointBaseType, HttpRequestBase httpRequest, boolean isList) {
+        httpRequest.setHeader("Content-Type", "application/json");
+        try (CloseableHttpClient client = HttpClientBuilder.create().build();
+             CloseableHttpResponse response = client.execute(httpRequest)) {
+
+            int statusCode = response.getStatusLine().getStatusCode();
+            String reasonPhrase = response.getStatusLine().getReasonPhrase();
+            HttpEntity entity = response.getEntity();
+            if (entity == null) return null;
+
+            try (InputStream inputStream = entity.getContent()) {
+                if (statusCode >= 200 && statusCode < 300) {
+                    return parseResponse(endPointBaseType, isList, inputStream);
+                } else {
+                    String responseBody = inputStreamToString(inputStream);
+                    String errorCode = null;
+                    String errorMessage = null;
+                    try {
+                        Map<?,?> map = mapper.readValue(responseBody, Map.class);
+                        errorCode = map.get("code") != null ? map.get("code").toString() : null;
+                        errorMessage = map.get("message") != null ? map.get("message").toString() : null;
+                    } catch (Exception ignore) {
+                        // Not JSON → ignore
+                    }
+
+                    throw new HttpRequestException(statusCode, reasonPhrase, responseBody, errorCode, errorMessage);
+                }
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("IO error during request to " + httpRequest.getURI(), e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
 	private <T> T parseResponse(EndPointBaseType endpointBaseType, boolean isList, InputStream inputStream) 
 			throws IOException {
 		if (isList){
@@ -132,4 +156,14 @@ public class DefaultHttpsClient implements HttpsClient {
 		}
 		return entity;
 	}
+
+    private String inputStreamToString(InputStream inputStream) throws IOException {
+        ByteArrayOutputStream result = new ByteArrayOutputStream();
+        byte[] buffer = new byte[1024];
+        int length;
+        while ((length = inputStream.read(buffer)) != -1) {
+            result.write(buffer, 0, length);
+        }
+        return result.toString("UTF-8");
+    }
 }
