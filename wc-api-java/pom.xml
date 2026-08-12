@@ -29,7 +29,7 @@
 
 
 	<properties>
-		<jackson.version>2.18.6</jackson.version>
+		<jackson.version>2.18.8</jackson.version>
 		<httpclient.version>4.5.13</httpclient.version>
 		<junit.version>4.13.2</junit.version>
 	</properties>
