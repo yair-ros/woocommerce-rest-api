@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
@@ -32,9 +33,15 @@ import org.apache.http.message.BasicNameValuePair;
 public class DefaultHttpsClient implements HttpsClient {
 
 	private final BasicAuthConfig config;
-	
+	private final RequestConfig requestConfig;
+
 	public DefaultHttpsClient(BasicAuthConfig config) {
 		this.config = config;
+		this.requestConfig = RequestConfig.custom()
+				.setConnectTimeout(config.getConnectTimeoutMillis())
+				.setConnectionRequestTimeout(config.getConnectTimeoutMillis())
+				.setSocketTimeout(config.getSocketTimeoutMillis())
+				.build();
 	}
 
 	private final ObjectMapper mapper = new ObjectMapper();
@@ -77,7 +84,7 @@ public class DefaultHttpsClient implements HttpsClient {
 
     private <T> T doHttpRequest(EndPointBaseType endPointBaseType, HttpRequestBase httpRequest, boolean isList) {
         httpRequest.setHeader("Content-Type", "application/json");
-        try (CloseableHttpClient client = HttpClientBuilder.create().build();
+        try (CloseableHttpClient client = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build();
              CloseableHttpResponse response = client.execute(httpRequest)) {
 
             int statusCode = response.getStatusLine().getStatusCode();
