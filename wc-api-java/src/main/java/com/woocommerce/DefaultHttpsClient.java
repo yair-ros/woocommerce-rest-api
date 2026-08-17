@@ -84,6 +84,20 @@ public class DefaultHttpsClient implements HttpsClient {
 
     private <T> T doHttpRequest(EndPointBaseType endPointBaseType, HttpRequestBase httpRequest, boolean isList) {
         httpRequest.setHeader("Content-Type", "application/json");
+        // 1.0.6: credentials travel as an HTTP Basic Authorization header by
+        // default instead of consumer_key/consumer_secret query parameters.
+        // Query-param auth wrote the live credentials into every server
+        // access log, proxy log, and any exception message carrying the URL.
+        // The header goes over TLS only (this client is https-only) and never
+        // appears in URLs. Legacy query-param mode remains available via
+        // BasicAuthConfig.useQueryStringAuth for hosts that strip the
+        // Authorization header (some Apache CGI/FastCGI setups).
+        if (!config.isUseQueryStringAuth()) {
+            String credentials = config.getConsumerKey() + ":" + config.getConsumerSecret();
+            String encoded = java.util.Base64.getEncoder()
+                    .encodeToString(credentials.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            httpRequest.setHeader("Authorization", "Basic " + encoded);
+        }
         try (CloseableHttpClient client = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build();
              CloseableHttpResponse response = client.execute(httpRequest)) {
 
@@ -111,8 +125,19 @@ public class DefaultHttpsClient implements HttpsClient {
                 }
             }
         } catch (IOException e) {
-            throw new RuntimeException("IO error during request to " + httpRequest.getURI(), e);
+            // Redact credential query params from the URI before it can reach
+            // logs/emails via the exception message (the 2026-08-17 incident:
+            // a consumer-side error email carried the live credentials).
+            throw new RuntimeException("IO error during request to " + redactCredentials(httpRequest.getURI()), e);
         }
+    }
+
+    /** consumer_key/consumer_secret values replaced with [REDACTED]; only relevant in legacy query-param auth mode. */
+    static String redactCredentials(URI uri) {
+        if (uri == null) return "";
+        return uri.toString()
+                .replaceAll("(?i)(consumer_key=)[^&\\s]+", "$1[REDACTED]")
+                .replaceAll("(?i)(consumer_secret=)[^&\\s]+", "$1[REDACTED]");
     }
 
     @SuppressWarnings("unchecked")
@@ -133,7 +158,11 @@ public class DefaultHttpsClient implements HttpsClient {
 		List<NameValuePair> postParameters = getParametersAsList(params);
 		try {
 			URIBuilder uriBuilder = new URIBuilder(url);
-			addCredentialsParams(uriBuilder);
+			// 1.0.6: credentials go in the Authorization header by default
+			// (see doHttpRequest); query params only in legacy mode.
+			if (config.isUseQueryStringAuth()) {
+				addCredentialsParams(uriBuilder);
+			}
 			uriBuilder.addParameters(postParameters);
 			return uriBuilder.build();
 		} catch (URISyntaxException e) {
