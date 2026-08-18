@@ -8,6 +8,49 @@ wc-api-java is available on maven central:
 will update soon
 ```
 
+## Running the manual WooCommerce integration tests
+
+`WooCommerceClientTest` connects to a real WooCommerce store. Its URL,
+credentials, and test order ID are loaded from a local environment file that is
+ignored by Git.
+
+From the repository root, create the local file:
+
+```shell
+make woocommerce-test-env
+```
+
+Edit `.woocommerce-test.env` and replace all placeholder values:
+
+```dotenv
+WC_URL=https://your-store.example/
+WC_CONSUMER_KEY=ck_replace_me
+WC_CONSUMER_SECRET=cs_replace_me
+WC_ORDER_ID=12345
+```
+
+Run the complete read-only integration suite:
+
+```shell
+make woocommerce-test
+```
+
+Run only one test method when needed:
+
+```shell
+make woocommerce-test WC_TEST=getConfiguredOrderMetadataCanBeMapped
+```
+
+The Make target sets `WC_RUN_MANUAL_TESTS=true`. Without that explicit gate,
+the integration tests are skipped during normal Maven test runs. Never add
+`.woocommerce-test.env` to Git; only `.woocommerce-test.env.example` should be
+committed.
+
+The suite verifies that the configured order can be retrieved, its core fields
+and collections deserialize correctly, its metadata can be mapped, and order
+listing can filter by its ID. The tests perform only `GET` requests; they do not
+create, update, or delete WooCommerce data.
+
 ## Usage
 
 ```java

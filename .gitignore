@@ -16,3 +16,6 @@ log/
 target/
 
 .java-version
+
+# Local WooCommerce integration-test credentials
+/.woocommerce-test.env
