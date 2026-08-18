@@ -8,9 +8,17 @@ public class WooOrderUtils {
 
     public static OrderMetaDataValues getOrderMetaDataValues(List<MetadData> metaDataList) {
         OrderMetaDataValues orderMetaDataValues = new OrderMetaDataValues();
+        if (metaDataList == null) {
+            return orderMetaDataValues;
+        }
+
         for (MetadData metadData : metaDataList) {
+            if (metadData == null || metadData.getKey() == null) {
+                continue;
+            }
+
             Object value = metadData.getValue();
-            switch (metadData.getKey())	{
+            switch (metadData.getKey()) {
                 case "is_vat_exempt":
                     String isVatExempt = (String) value;
                     orderMetaDataValues.setIsVatExempt(isVatExempt != null ? isVatExempt : "");
@@ -77,8 +85,8 @@ public class WooOrderUtils {
                     }
                     break;
                 default:
-                    String errorMessage = "There is a new woo order metadata key. 'meta key': " + metadData.getKey() + ".   'meta value': " + value;
-                    System.out.println(errorMessage);
+                    // WooCommerce extensions can add arbitrary metadata keys.
+                    break;
             }
         }
         return orderMetaDataValues;
