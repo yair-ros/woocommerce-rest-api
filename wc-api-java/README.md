@@ -1,6 +1,6 @@
 # WooCommerce API Java Wrapper
-Java wrapper for WooCommerce REST API. Currently the library supports only latest version of WooCommerce REST API (v1)
-with the OAuth 1.0a authentication over the HTTPS protocol.
+Java wrapper for WooCommerce REST API. The library targets the wc/v3 WooCommerce
+REST API, authenticated with HTTP Basic auth (consumer key/secret) over HTTPS.
 
 ## Setup
 wc-api-java is available on maven central:
