@@ -15,6 +15,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.woocommerce.beans.common.Links;
+import com.woocommerce.beans.common.WooBatchError;
+import com.woocommerce.beans.order.MetadData;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -36,7 +38,9 @@ import com.woocommerce.beans.common.Links;
     "regular_price",
     "sale_price",
     "date_on_sale_from",
+    "date_on_sale_from_gmt",
     "date_on_sale_to",
+    "date_on_sale_to_gmt",
     "price_html",
     "on_sale",
     "purchasable",
@@ -53,6 +57,7 @@ import com.woocommerce.beans.common.Links;
     "tax_class",
     "manage_stock",
     "stock_quantity",
+    "stock_status",
     "in_stock",
     "backorders",
     "backorders_allowed",
@@ -80,7 +85,9 @@ import com.woocommerce.beans.common.Links;
     "variations",
     "grouped_products",
     "menu_order",
-    "_links"
+    "meta_data",
+    "_links",
+    "error"
 })
 public class WooProduct {
 
@@ -118,8 +125,12 @@ public class WooProduct {
     private String salePrice;
     @JsonProperty("date_on_sale_from")
     private String dateOnSaleFrom;
+    @JsonProperty("date_on_sale_from_gmt")
+    private String dateOnSaleFromGmt;
     @JsonProperty("date_on_sale_to")
     private String dateOnSaleTo;
+    @JsonProperty("date_on_sale_to_gmt")
+    private String dateOnSaleToGmt;
     @JsonProperty("price_html")
     private String priceHtml;
     @JsonProperty("on_sale")
@@ -152,6 +163,8 @@ public class WooProduct {
     private Boolean manageStock;
     @JsonProperty("stock_quantity")
     private Object stockQuantity;
+    @JsonProperty("stock_status")
+    private String stockStatus;
     @JsonProperty("in_stock")
     private Boolean inStock;
     @JsonProperty("backorders")
@@ -206,8 +219,17 @@ public class WooProduct {
     private List<Object> groupedProducts = null;
     @JsonProperty("menu_order")
     private Long menuOrder;
+    @JsonProperty("meta_data")
+    private List<MetadData> metaData = null;
     @JsonProperty("_links")
     private Links links;
+    // 1.1.0: products/batch and products/{id}/variations/batch never fail the whole
+    // request when one item is invalid - the failed item comes back with its normal
+    // fields mostly empty and this "error" object populated instead. Null on every
+    // other response (create/update/get), so JsonInclude.NON_NULL keeps it out of
+    // request bodies we send.
+    @JsonProperty("error")
+    private WooBatchError error;
     @JsonIgnore
     private Map<String, Object> additionalProperties = new HashMap<String, Object>();
 
@@ -381,6 +403,16 @@ public class WooProduct {
         this.dateOnSaleFrom = dateOnSaleFrom;
     }
 
+    @JsonProperty("date_on_sale_from_gmt")
+    public String getDateOnSaleFromGmt() {
+        return dateOnSaleFromGmt;
+    }
+
+    @JsonProperty("date_on_sale_from_gmt")
+    public void setDateOnSaleFromGmt(String dateOnSaleFromGmt) {
+        this.dateOnSaleFromGmt = dateOnSaleFromGmt;
+    }
+
     @JsonProperty("date_on_sale_to")
     public String getDateOnSaleTo() {
         return dateOnSaleTo;
@@ -389,6 +421,16 @@ public class WooProduct {
     @JsonProperty("date_on_sale_to")
     public void setDateOnSaleTo(String dateOnSaleTo) {
         this.dateOnSaleTo = dateOnSaleTo;
+    }
+
+    @JsonProperty("date_on_sale_to_gmt")
+    public String getDateOnSaleToGmt() {
+        return dateOnSaleToGmt;
+    }
+
+    @JsonProperty("date_on_sale_to_gmt")
+    public void setDateOnSaleToGmt(String dateOnSaleToGmt) {
+        this.dateOnSaleToGmt = dateOnSaleToGmt;
     }
 
     @JsonProperty("price_html")
@@ -549,6 +591,16 @@ public class WooProduct {
     @JsonProperty("stock_quantity")
     public void setStockQuantity(Object stockQuantity) {
         this.stockQuantity = stockQuantity;
+    }
+
+    @JsonProperty("stock_status")
+    public String getStockStatus() {
+        return stockStatus;
+    }
+
+    @JsonProperty("stock_status")
+    public void setStockStatus(String stockStatus) {
+        this.stockStatus = stockStatus;
     }
 
     @JsonProperty("in_stock")
@@ -821,6 +873,16 @@ public class WooProduct {
         this.menuOrder = menuOrder;
     }
 
+    @JsonProperty("meta_data")
+    public List<MetadData> getMetaData() {
+        return metaData;
+    }
+
+    @JsonProperty("meta_data")
+    public void setMetaData(List<MetadData> metaData) {
+        this.metaData = metaData;
+    }
+
     @JsonProperty("_links")
     public Links getLinks() {
         return links;
@@ -829,6 +891,16 @@ public class WooProduct {
     @JsonProperty("_links")
     public void setLinks(Links links) {
         this.links = links;
+    }
+
+    @JsonProperty("error")
+    public WooBatchError getError() {
+        return error;
+    }
+
+    @JsonProperty("error")
+    public void setError(WooBatchError error) {
+        this.error = error;
     }
 
     @Override
