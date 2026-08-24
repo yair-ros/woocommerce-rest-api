@@ -224,9 +224,17 @@ public class WooVariation {
         return manageStock;
     }
 
+    /**
+     * 1.1.1: takes Object, not Boolean - the wc/v3 variation schema declares
+     * manage_stock as boolean OR the string "parent" (variation inherits stock
+     * management from its parent product), and Woo returns "parent" on reads,
+     * including inside products/{id}/variations/batch responses. A Boolean-typed
+     * setter made Jackson throw InvalidFormatException on every such response.
+     * Non-boolean values map to null; requests still serialize a plain boolean.
+     */
     @JsonProperty("manage_stock")
-    public void setManageStock(Boolean manageStock) {
-        this.manageStock = manageStock;
+    public void setManageStock(Object manageStock) {
+        this.manageStock = manageStock instanceof Boolean ? (Boolean) manageStock : null;
     }
 
     @JsonProperty("stock_quantity")
