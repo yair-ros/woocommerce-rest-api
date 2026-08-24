@@ -172,7 +172,11 @@ public class WooCommerceApiMockServerTest {
         startServer("/wp-json/wc/v3/products/123/variations/batch", exchange -> {
             capturedPath.set(exchange.getRequestURI().getPath());
             capturedBody.set(readBody(exchange));
-            sendJson(exchange, 200, "{\"create\":[{\"id\":901,\"sku\":\"NEW-VAR\"}],\"update\":[],\"delete\":[{\"id\":50}]}");
+            // update[0] carries manage_stock:"parent" - the non-boolean value Woo returns for
+            // variations inheriting stock management; parsing it is the 1.1.1 regression case.
+            sendJson(exchange, 200, "{\"create\":[{\"id\":901,\"sku\":\"NEW-VAR\"}],"
+                    + "\"update\":[{\"id\":902,\"sku\":\"UPD-VAR\",\"manage_stock\":\"parent\"}],"
+                    + "\"delete\":[{\"id\":50}]}");
         });
 
         WooVariation create = new WooVariation();
@@ -190,6 +194,8 @@ public class WooCommerceApiMockServerTest {
         Assert.assertTrue(result instanceof WooVariationBatchResponse);
         WooVariationBatchResponse response = (WooVariationBatchResponse) result;
         Assert.assertEquals("NEW-VAR", response.getCreate().get(0).getSku());
+        Assert.assertEquals("UPD-VAR", response.getUpdate().get(0).getSku());
+        Assert.assertNull(response.getUpdate().get(0).getManageStock());
         Assert.assertEquals(50L, response.getDelete().get(0).getId().longValue());
     }
 
