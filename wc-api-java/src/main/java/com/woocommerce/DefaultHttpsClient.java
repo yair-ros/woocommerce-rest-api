@@ -8,6 +8,7 @@ import com.woocommerce.auth.BasicAuthConfig;
 
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -42,6 +43,16 @@ public class DefaultHttpsClient implements HttpsClient, Closeable {
 	 * explicit, identifiable UA is more robust than depending on that.
 	 */
 	static final String USER_AGENT = "wc-api-java/1.1.0";
+
+	/**
+	 * 1.1.2: how many leading bytes of a 2xx body are kept aside for diagnostics
+	 * in case JSON parsing fails. WordPress can serve a non-JSON body with a 200
+	 * (a PHP warning prepended to the output, an HTML page from a plugin/host):
+	 * previously the body was consumed by the failed parse and lost, leaving only
+	 * "Unexpected character '<'" in the log. Parsing still streams into Jackson;
+	 * the full body is never buffered.
+	 */
+	static final int RESPONSE_HEAD_CAPTURE_BYTES = 2048;
 
 	private final BasicAuthConfig config;
 	private final RequestConfig requestConfig;
@@ -153,7 +164,7 @@ public class DefaultHttpsClient implements HttpsClient, Closeable {
 
             try (InputStream inputStream = entity.getContent()) {
                 if (statusCode >= 200 && statusCode < 300) {
-                    return parseResponse(responseClazz, isList, inputStream);
+                    return parseSuccessResponse(responseClazz, isList, inputStream, statusCode, reasonPhrase);
                 } else {
                     throw buildHttpRequestException(statusCode, reasonPhrase, inputStream);
                 }
@@ -176,7 +187,7 @@ public class DefaultHttpsClient implements HttpsClient, Closeable {
 
             try (InputStream inputStream = entity.getContent()) {
                 if (statusCode >= 200 && statusCode < 300) {
-                    List<?> items = parseResponse(responseClazz, true, inputStream);
+                    List<?> items = parseSuccessResponse(responseClazz, true, inputStream, statusCode, reasonPhrase);
                     return new WooPage<>(items, total, totalPages);
                 } else {
                     throw buildHttpRequestException(statusCode, reasonPhrase, inputStream);
@@ -242,6 +253,58 @@ public class DefaultHttpsClient implements HttpsClient, Closeable {
         return uri.toString()
                 .replaceAll("(?i)(consumer_key=)[^&\\s]+", "$1[REDACTED]")
                 .replaceAll("(?i)(consumer_secret=)[^&\\s]+", "$1[REDACTED]");
+    }
+
+    /**
+     * 1.1.2: a 2xx body that Jackson cannot parse is reported as an
+     * {@link HttpRequestException} carrying the status and the first
+     * {@link #RESPONSE_HEAD_CAPTURE_BYTES} of the body, so the server's actual
+     * output (typically a PHP warning or an HTML page served with 200) reaches
+     * the log. JsonProcessingException must be caught here: it extends
+     * IOException, so letting it escape would land in the callers' generic
+     * "IO error during request" wrapper - which is exactly how the body used
+     * to get lost.
+     */
+    private <T> T parseSuccessResponse(Class<?> responseClazz, boolean isList, InputStream inputStream,
+            int statusCode, String reasonPhrase) throws IOException {
+        HeadRecordingInputStream recordingStream = new HeadRecordingInputStream(inputStream, RESPONSE_HEAD_CAPTURE_BYTES);
+        try {
+            return parseResponse(responseClazz, isList, recordingStream);
+        } catch (JsonProcessingException e) {
+            throw new HttpRequestException(statusCode, reasonPhrase, recordingStream.recordedHead(),
+                    null, "2xx response body is not the expected JSON: " + e.getOriginalMessage());
+        }
+    }
+
+    /** Passes bytes through untouched while keeping the first {@code limit} bytes for error reporting. */
+    private static final class HeadRecordingInputStream extends FilterInputStream {
+        private final ByteArrayOutputStream head;
+        private final int limit;
+
+        HeadRecordingInputStream(InputStream in, int limit) {
+            super(in);
+            this.limit = limit;
+            this.head = new ByteArrayOutputStream(Math.min(limit, 512));
+        }
+
+        @Override
+        public int read() throws IOException {
+            int b = super.read();
+            if (b != -1 && head.size() < limit) head.write(b);
+            return b;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            int n = super.read(b, off, len);
+            if (n > 0 && head.size() < limit) head.write(b, off, Math.min(n, limit - head.size()));
+            return n;
+        }
+
+        String recordedHead() throws IOException {
+            String recorded = head.toString("UTF-8");
+            return head.size() >= limit ? recorded + "... [truncated]" : recorded;
+        }
     }
 
     @SuppressWarnings("unchecked")

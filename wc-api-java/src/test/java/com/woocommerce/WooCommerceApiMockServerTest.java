@@ -23,6 +23,8 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import com.woocommerce.auth.BasicAuthConfig;
+import com.woocommerce.beans.order.WooOrder;
+import com.woocommerce.beans.order.WooOrderBatch;
 import com.woocommerce.beans.product.WooCategory;
 import com.woocommerce.beans.product.WooProduct;
 import com.woocommerce.beans.product.WooProductBatch;
@@ -243,6 +245,65 @@ public class WooCommerceApiMockServerTest {
         api.get(EndPointBaseType.PRODUCTS, 1);
 
         Assert.assertEquals("wc-api-java/1.1.0", capturedUserAgent.get());
+    }
+
+    /**
+     * The 2026-08-30 production case: orders/batch answered HTTP 200 but the body
+     * was HTML (a PHP warning), not JSON. The failure must surface as an
+     * HttpRequestException carrying the status and the head of the body - not as
+     * the generic "IO error during request" wrapper that used to swallow it.
+     */
+    @Test
+    public void htmlBodyWith200SurfacesStatusAndBodyHead() throws Exception {
+        StringBuilder html = new StringBuilder(
+                "<br />\n<b>Warning</b>:  Allowed memory size exhausted in /wp-content/plugins/some-plugin.php on line 12\n");
+        while (html.length() <= DefaultHttpsClient.RESPONSE_HEAD_CAPTURE_BYTES) {
+            html.append("<!-- filler beyond the capture limit -->\n");
+        }
+        startServer("/wp-json/wc/v3/orders/batch", exchange -> {
+            readBody(exchange);
+            byte[] bytes = html.toString().getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(bytes);
+            }
+        });
+
+        WooOrderBatch batch = new WooOrderBatch();
+        batch.getUpdateListt().add(new WooOrder(7L, "completed"));
+
+        try {
+            api.batch(EndPointBaseType.ORDERS_BATCH, batch);
+            Assert.fail("HTML body with 200 status must raise HttpRequestException");
+        } catch (HttpRequestException e) {
+            Assert.assertEquals(200, e.getStatusCode());
+            Assert.assertTrue("exception message should carry the server's actual output",
+                    e.getMessage().contains("Allowed memory size exhausted"));
+            Assert.assertTrue("captured body head should be truncated at the capture limit",
+                    e.getResponseBody().endsWith("... [truncated]"));
+            Assert.assertTrue(e.getResponseBody().length()
+                    <= DefaultHttpsClient.RESPONSE_HEAD_CAPTURE_BYTES + "... [truncated]".length());
+        }
+    }
+
+    /** The head-recording wrapper must not disturb parsing of valid bodies larger than the capture limit. */
+    @Test
+    public void validJsonLargerThanCaptureLimitStillParses() throws Exception {
+        StringBuilder json = new StringBuilder("[");
+        int count = 0;
+        while (json.length() <= DefaultHttpsClient.RESPONSE_HEAD_CAPTURE_BYTES * 2) {
+            if (count > 0) json.append(',');
+            json.append("{\"id\":").append(++count)
+                    .append(",\"name\":\"Product with a reasonably long descriptive name ").append(count).append("\"}");
+        }
+        json.append(']');
+        startServer("/wp-json/wc/v3/products", exchange -> sendJson(exchange, 200, json.toString()));
+
+        List<?> products = api.getAll(EndPointBaseType.PRODUCTS, new HashMap<>());
+
+        Assert.assertEquals(count, products.size());
+        Assert.assertTrue(products.get(0) instanceof WooProduct);
     }
 
     @Test
